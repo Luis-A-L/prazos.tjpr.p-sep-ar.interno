@@ -370,14 +370,16 @@
             if (resultado && dataInterposicao) {
                 try {
                     const dataInterposicaoObj = new Date(dataInterposicao + 'T00:00:00');
-                    // Para cível, usamos o cenário com decreto (o mais benéfico)
-                    const prazoFinal = resultado.tipo === 'civel' ? resultado.comDecreto.prazoFinal : resultado.comDecreto.prazoFinal;
+                    // Para ser "puramente intempestivo", a data de interposição deve ser maior que o prazo final mais benéfico possível.
+                    // Calculamos o prazo final considerando TODAS as suspensões comprováveis.
+                    const todasSuspensoesComprovaveis = new Set(resultado.suspensoesComprovaveis.map(d => d.data.toISOString().split('T')[0]));
+                    const prazoFinalMaximo = calcularPrazoFinalDiasUteis(resultado.inicioPrazo, resultado.prazo, todasSuspensoesComprovaveis).prazoFinal;
                     
-                    // Zera as horas para comparar apenas as datas
-                    prazoFinal.setHours(0, 0, 0, 0);
+                    // Zera as horas para comparar apenas as datas, garantindo uma comparação correta.
+                    prazoFinalMaximo.setHours(0, 0, 0, 0);
                     dataInterposicaoObj.setHours(0, 0, 0, 0);
 
-                    if (dataInterposicaoObj > prazoFinal) {
+                    if (dataInterposicaoObj > prazoFinalMaximo) {
                         setTempestividade('intempestivo');
                     } else {
                         setTempestividade('tempestivo');
@@ -388,44 +390,54 @@
             } else {
                 setTempestividade(null);
             }
-          }, [dataInterposicao, resultado, diasComprovados]);
+          }, [dataInterposicao, resultado]);
 
           const gerarMinutaIntempestividade = async () => {
-            const { dataPublicacao, inicioPrazo, comDecreto } = resultado;
-            const dataDispStr = new Date(dataDisponibilizacao + 'T00:00:00').toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-            const dataPubStr = dataPublicacao.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-            const inicioPrazoStr = inicioPrazo.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-            const dataInterposicaoStr = new Date(dataInterposicao + 'T00:00:00').toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-            const prazoFinalStr = comDecreto.prazoFinal.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+            try {
+                const { dataPublicacao, inicioPrazo, prazo, suspensoesComprovaveis } = resultado;
+                
+                // Recalcula o prazo final máximo para garantir consistência na minuta
+                const todasSuspensoes = new Set(suspensoesComprovaveis.map(d => d.data.toISOString().split('T')[0]));
+                const prazoFinalMaximo = calcularPrazoFinalDiasUteis(inicioPrazo, prazo, todasSuspensoes).prazoFinal;
 
-            const conteudoHtml = `
-                <p>O recurso especial não pode ser admitido, pois foi interposto sem observância do prazo previsto no artigo 1.003, § 5º, c/c artigo 219, ambos do Código de Processo Civil.</p>
-                <p>Isto porque se verifica que a intimação do acórdão recorrido (mov. x.x, dos autos sob nº ${numeroProcesso || 'xxxxxx'}) se deu pela disponibilização no DJEN na data de ${dataDispStr} e, considerada como data da publicação o primeiro dia útil seguinte ao da disponibilização da informação (artigos 4º, §3º, da Lei 11.419/2006, e 224, do Código de Processo Civil), ${dataPubStr}, iniciou-se a contagem do prazo no primeiro dia útil seguinte ao da publicação, isto é em ${inicioPrazoStr}.</p>
-                <p>Portanto, a petição recursal apresentada em ${dataInterposicaoStr} está intempestiva, já que o prazo recursal findou em ${prazoFinalStr}.</p>
-                <p>Neste sentido:</p>
-                <p>"PROCESSUAL CIVIL. AGRAVO INTERNO NO AGRAVO EM RECURSO ESPECIAL. RECURSO MANEJADO SOB A ÉGIDE DO NCPC. RECURSO INTEMPESTIVO. RECURSO ESPECIAL INTERPOSTO NA VIGÊNCIA DO NCPC. RECURSO ESPECIAL APRESENTADO FORA DO PRAZO LEGAL. INTEMPESTIVIDADE. APLICAÇÃO DOS ARTS. 219 E 1.003, § 5º, AMBOS DO NCPC. ADMISSIBILIDADE DO APELO NOBRE. JUÍZO BIFÁSICO. AUSÊNCIA DE VINCULAÇÃO DO STJ. AGRAVO INTERNO NÃO PROVIDO.</p>
-                <p>1. Aplica-se o NCPC a este julgamento ante os termos do Enunciado Administrativo nº 3, aprovado pelo Plenário do STJ na sessão de 9/3/2016: Aos recursos interpostos com fundamento no CPC/2015 (relativos a decisões publicadas a partir de 18 de março de 2016) serão exigidos os requisitos de admissibilidade recursal na forma do novo CPC.</p>
-                <p>2. A interposição de recurso especial após o prazo legal implica o seu não conhecimento, por intempestividade, nos termos dos arts. 219 e 1.003, § 5º, ambos do NCPC.</p>
-                <p>3. O juízo de admissibilidade do apelo nobre é bifásico, não ficando o STJ vinculado à decisão proferida pela Corte estadual.</p>
-                <p>4. Agravo interno não provido."</p>
-                <p>(AgInt no AREsp n. 2.039.729/RS, relator Ministro Moura Ribeiro, Terceira Turma, julgado em 9/5/2022, DJe de 11/5/2022.)</p>
-                <p>Diante do exposto, inadmito o recurso especial interposto.</p>
-                <p>Intime-se. Diligências necessárias.</p>
-                <br/><br/>
-                <p>Curitiba, data da assinatura digital.</p>
-                <br/><br/>
-                <p>Desembargador HAYTON LEE SWAIN FILHO</p>
-                <p>1º Vice-Presidente do Tribunal de Justiça do Estado do Paraná</p>
-            `.replace(/<p>/g, '<p style="font-family: Arial; font-size: 16pt; text-align: justify;">');
+                const dataDispStr = new Date(dataDisponibilizacao + 'T00:00:00').toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                const dataPubStr = dataPublicacao.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                const inicioPrazoStr = inicioPrazo.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                const dataInterposicaoStr = new Date(dataInterposicao + 'T00:00:00').toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                const prazoFinalStr = prazoFinalMaximo.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 
-            const fileBuffer = await htmlToDocx.asBlob(conteudoHtml);
+                const conteudoHtml = `
+                    <p>O recurso especial não pode ser admitido, pois foi interposto sem observância do prazo previsto no artigo 1.003, § 5º, c/c artigo 219, ambos do Código de Processo Civil.</p>
+                    <p>Isto porque se verifica que a intimação do acórdão recorrido (mov. x.x, dos autos sob nº ${numeroProcesso || 'xxxxxx'}) se deu pela disponibilização no DJEN na data de ${dataDispStr} e, considerada como data da publicação o primeiro dia útil seguinte ao da disponibilização da informação (artigos 4º, §3º, da Lei 11.419/2006, e 224, do Código de Processo Civil), ${dataPubStr}, iniciou-se a contagem do prazo no primeiro dia útil seguinte ao da publicação, isto é em ${inicioPrazoStr}.</p>
+                    <p>Portanto, a petição recursal apresentada em ${dataInterposicaoStr} está intempestiva, já que o prazo recursal findou em ${prazoFinalStr}.</p>
+                    <p>Neste sentido:</p>
+                    <p>"PROCESSUAL CIVIL. AGRAVO INTERNO NO AGRAVO EM RECURSO ESPECIAL. RECURSO MANEJADO SOB A ÉGIDE DO NCPC. RECURSO INTEMPESTIVO. RECURSO ESPECIAL INTERPOSTO NA VIGÊNCIA DO NCPC. RECURSO ESPECIAL APRESENTADO FORA DO PRAZO LEGAL. INTEMPESTIVIDADE. APLICAÇÃO DOS ARTS. 219 E 1.003, § 5º, AMBOS DO NCPC. ADMISSIBILIDADE DO APELO NOBRE. JUÍZO BIFÁSICO. AUSÊNCIA DE VINCULAÇÃO DO STJ. AGRAVO INTERNO NÃO PROVIDO.</p>
+                    <p>1. Aplica-se o NCPC a este julgamento ante os termos do Enunciado Administrativo nº 3, aprovado pelo Plenário do STJ na sessão de 9/3/2016: Aos recursos interpostos com fundamento no CPC/2015 (relativos a decisões publicadas a partir de 18 de março de 2016) serão exigidos os requisitos de admissibilidade recursal na forma do novo CPC.</p>
+                    <p>2. A interposição de recurso especial após o prazo legal implica o seu não conhecimento, por intempestividade, nos termos dos arts. 219 e 1.003, § 5º, ambos do NCPC.</p>
+                    <p>3. O juízo de admissibilidade do apelo nobre é bifásico, não ficando o STJ vinculado à decisão proferida pela Corte estadual.</p>
+                    <p>4. Agravo interno não provido."</p>
+                    <p>(AgInt no AREsp n. 2.039.729/RS, relator Ministro Moura Ribeiro, Terceira Turma, julgado em 9/5/2022, DJe de 11/5/2022.)</p>
+                    <p>Diante do exposto, inadmito o recurso especial interposto.</p>
+                    <p>Intime-se. Diligências necessárias.</p>
+                    <br/><br/>
+                    <p>Curitiba, data da assinatura digital.</p>
+                    <br/><br/>
+                    <p>Desembargador HAYTON LEE SWAIN FILHO</p>
+                    <p>1º Vice-Presidente do Tribunal de Justiça do Estado do Paraná</p>
+                `.replace(/<p>/g, '<p style="font-family: Arial; font-size: 16pt; text-align: justify;">');
 
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(fileBuffer);
-            link.download = `Minuta_Intempestividade_${numeroProcesso || 'processo'}.doc`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+                const fileBuffer = await window.htmlToDocx.asBlob(conteudoHtml);
+
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(fileBuffer);
+                link.download = `Minuta_Intempestividade_${numeroProcesso || 'processo'}.doc`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (err) {
+                console.error("Erro ao gerar o documento:", err);
+                setError("Ocorreu um erro ao tentar gerar o arquivo .doc. Verifique o console para mais detalhes.");
+            }
           };
 
           return (
@@ -493,7 +505,7 @@
                                             <p className="text-center mt-2 text-2xl font-bold text-green-600 dark:text-green-400">{resultado.comDecreto.prazoFinal.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
                                             {resultado.comDecreto.diasNaoUteis.length > 0 && <div className="mt-4 text-left"><p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Dias não úteis considerados:</p><ul className="text-xs space-y-1"><GroupedDiasNaoUteis dias={resultado.comDecreto.diasNaoUteis} /></ul></div>}
                                             <div className="mt-4 text-left border-t border-slate-300 dark:border-slate-600 pt-2">
-                                                <h4 className="text-xs font-semibold text-orange-600 dark:text-orange-400 mb-2">Marque as suspensões comprovadas:</h4>
+                                                <h4 className="text-xs font-semibold text-orange-600 dark:text-orange-400 mb-2">Decretos que influenciaram na dilação do prazo:</h4>
                                                 <div className="space-y-1">
                                                     {resultado.suspensoesComprovaveis.map(dia => {
                                                         const dataString = dia.data.toISOString().split('T')[0];
@@ -533,12 +545,12 @@
                                         )}
                                         <div>
                                             <p className="font-bold">{tempestividade === 'tempestivo' ? 'RECURSO TEMPESTIVO' : 'RECURSO INTEMPESTIVO'}</p>
-                                            <p className="text-sm">O recurso foi interposto {tempestividade === 'tempestivo' ? 'dentro do' : 'fora do'} prazo legal, que se encerrou em {resultado.comDecreto.prazoFinal.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}.</p>
+                                            <p className="text-sm">O recurso foi interposto {tempestividade === 'tempestivo' ? 'dentro do' : 'fora do'} prazo legal. O prazo final, considerando as suspensões selecionadas, é {resultado.comDecreto.prazoFinal.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}.</p>
                                         </div>
                                     </div>
                                 )}
                                 {tempestividade === 'intempestivo' && (
-                                    <div className="mt-4"><button onClick={gerarMinutaIntempestividade} className="w-full md:w-auto flex justify-center items-center bg-gradient-to-br from-red-500 to-red-600 text-white font-semibold py-2 px-5 rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-300 shadow-md">Gerar Minuta de Intempestividade (.doc)</button></div>
+                                    <div className="mt-4"><button onClick={gerarMinutaIntempestividade} className="w-full md:w-auto flex justify-center items-center bg-gradient-to-br from-red-500 to-red-600 text-white font-semibold py-2 px-5 rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-300 shadow-md">Baixar minuta Puramente Intempestivo</button></div>
                                 )}
                             </div>
                         )}
