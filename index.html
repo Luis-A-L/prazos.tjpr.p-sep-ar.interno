@@ -26,6 +26,9 @@
     
     <!-- Biblioteca para gerar DOCX -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+
+    <!-- Biblioteca para salvar arquivos (alternativa robusta para download) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     
     <style>
         body {
@@ -467,15 +470,8 @@
                 });
 
                 window.docx.Packer.toBlob(doc).then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `Minuta_Intempestividade_${numeroProcesso || 'processo'}.docx`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                });
+                    saveAs(blob, `Minuta_Intempestividade_${numeroProcesso || 'processo'}.docx`);
+                }).catch(err => { throw err; }); // Propaga o erro para o catch principal
             } catch (err) {
                 console.error("Erro ao gerar o documento:", err);
                 setError("Ocorreu um erro ao tentar gerar o arquivo .doc. Verifique o console para mais detalhes.");
@@ -501,15 +497,8 @@
                 });
 
                 window.docx.Packer.toBlob(doc).then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `Minuta_Intimacao_Decreto_${numeroProcesso || 'processo'}.docx`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                });
+                    saveAs(blob, `Minuta_Intimacao_Decreto_${numeroProcesso || 'processo'}.docx`);
+                }).catch(err => { throw err; });
             } catch (err) {
                 console.error("Erro ao gerar o documento de intimação:", err);
                 setError("Ocorreu um erro ao tentar gerar o arquivo .docx. Verifique o console para mais detalhes.");
@@ -550,7 +539,9 @@
                     }],
                 });
 
-                window.docx.Packer.toBlob(doc).then(blob => { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `Minuta_Intempestivo_Falta_Decreto_${numeroProcesso || 'processo'}.docx`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); });
+                window.docx.Packer.toBlob(doc).then(blob => {
+                    saveAs(blob, `Minuta_Intempestivo_Falta_Decreto_${numeroProcesso || 'processo'}.docx`);
+                }).catch(err => { throw err; });
             } catch (err) { console.error("Erro ao gerar o documento:", err); setError("Ocorreu um erro ao tentar gerar o arquivo .docx."); }
           };
 
@@ -663,10 +654,10 @@
                                         </div>
                                     </div>
                                 )}
-                                {tempestividade === 'puramente_intempestivo' && (
+                                {(tempestividade === 'puramente_intempestivo' || tempestividade === 'intempestivo_falta_decreto') && (
                                     <div className="mt-4"><button onClick={gerarMinutaIntempestividade} className="w-full md:w-auto flex justify-center items-center bg-gradient-to-br from-red-500 to-red-600 text-white font-semibold py-2 px-5 rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-300 shadow-md">Baixar minuta Puramente Intempestivo</button></div>
                                 )}
-                                {(tempestividade === 'tempestivo' || tempestividade === 'intempestivo_falta_decreto') && (
+                                {(tempestividade === 'tempestivo' || tempestividade === 'intempestivo_falta_decreto') && resultado.suspensoesComprovaveis.length > 0 && (
                                     <div className="mt-4 space-y-2 md:space-y-0 md:flex md:items-center md:gap-3">
                                         {tempestividade === 'intempestivo_falta_decreto' && (
                                             <div className="p-3 text-sm text-amber-800 rounded-lg bg-amber-50 dark:bg-gray-800 dark:text-amber-400" role="alert">
@@ -675,7 +666,6 @@
                                         )}
                                         <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">Gerar outras minutas:</p>
                                         <div className="flex gap-3">
-                                            {/* TODO: Implementar a função de download para estas minutas */}
                                             <button onClick={gerarMinutaIntimacaoDecreto} className="flex-1 md:flex-auto justify-center flex items-center bg-gradient-to-br from-sky-500 to-sky-600 text-white font-semibold py-2 px-4 rounded-lg hover:from-sky-600 hover:to-sky-700 transition-all duration-300 shadow-md text-sm">Intimação Decreto</button><button onClick={gerarMinutaFaltaDecreto} className="flex-1 md:flex-auto justify-center flex items-center bg-gradient-to-br from-amber-500 to-amber-600 text-white font-semibold py-2 px-4 rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all duration-300 shadow-md text-sm">Intempestivo Falta Decreto</button>
                                         </div>
                                     </div>
